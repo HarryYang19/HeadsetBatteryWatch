@@ -1,3 +1,4 @@
+
 package com.example.headsetbattery;
 
 import android.Manifest;
@@ -11,7 +12,6 @@ import android.graphics.Typeface;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.Gravity;
-import android.view.ViewGroup;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -21,13 +21,19 @@ public class MainActivity extends Activity {
     private LinearLayout root;
     private static final int REQUEST_BT = 100;
 
-    @Override public void onCreate(Bundle state) {
+    @Override
+    public void onCreate(Bundle state) {
         super.onCreate(state);
         getWindow().getDecorView().setSystemUiVisibility(0);
         buildUi();
+
         if (Build.VERSION.SDK_INT >= 31 &&
-                checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.BLUETOOTH_CONNECT}, REQUEST_BT);
+                checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT)
+                        != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(
+                    new String[]{Manifest.permission.BLUETOOTH_CONNECT},
+                    REQUEST_BT
+            );
         } else {
             refresh();
         }
@@ -38,7 +44,7 @@ public class MainActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER);
         root.setPadding(24, 20, 24, 20);
-        root.setBackgroundColor(Color.rgb(0, 0, 0));
+        root.setBackgroundColor(Color.BLACK);
 
         TextView title = new TextView(this);
         title.setText("耳机电量");
@@ -77,42 +83,56 @@ public class MainActivity extends Activity {
         setContentView(root);
     }
 
-    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
+    @Override
+    public void onRequestPermissionsResult(
+            int requestCode, String[] permissions, int[] results) {
         super.onRequestPermissionsResult(requestCode, permissions, results);
-        if (requestCode == REQUEST_BT) refresh();
+        if (requestCode == REQUEST_BT) {
+            if (Build.VERSION.SDK_INT < 31 ||
+                    checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT)
+                            == PackageManager.PERMISSION_GRANTED) {
+                refresh();
+            } else {
+                showStatus("需要蓝牙连接权限", "--%");
+            }
+        }
+    }
+
+    private void showStatus(String subtitleText, String valueText) {
+        TextView subtitle = root.findViewWithTag("subtitle");
+        TextView value = root.findViewWithTag("value");
+        subtitle.setText(subtitleText);
+        value.setText(valueText);
     }
 
     private void refresh() {
-        TextView subtitle = root.findViewWithTag("subtitle");
-        TextView value = root.findViewWithTag("value");
         try {
-            BluetoothManager manager = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
-            Set<BluetoothDevice> devices = manager.getAdapter().getBondedDevices();
-            int found = 0;
-            String name = null;
-            int battery = -1;
-            for (BluetoothDevice device : devices) {
-                int level = device.getBatteryLevel(); // Public API on Android 13+; may be unavailable for some headsets.
-                if (level >= 0) {
-                    found++;
-                    name = device.getName();
-                    battery = level;
-                    break;
-                }
+            BluetoothManager manager =
+                    (BluetoothManager) getSystemService(
+                            Context.BLUETOOTH_SERVICE);
+
+            if (manager == null || manager.getAdapter() == null) {
+                showStatus("蓝牙不可用", "--%");
+                return;
             }
-            if (battery >= 0) {
-                subtitle.setText(name == null ? "已连接耳机" : name);
-                value.setText(battery + "%");
-            } else {
-                subtitle.setText("未读取到耳机电量");
-                value.setText("--%");
+
+            Set<BluetoothDevice> devices =
+                    manager.getAdapter().getBondedDevices();
+
+            if (devices.isEmpty()) {
+                showStatus("没有已配对的蓝牙设备", "--%");
+                return;
             }
-        } catch (SecurityException | NullPointerException ex) {
-            subtitle.setText("请允许蓝牙权限");
-            value.setText("--%");
+
+            // Android 标准公开 API 不提供通用的耳机电量读取方法。
+            // 不显示猜测值，避免将错误电量当作真实数据。
+            showStatus("已配对 " + devices.size() + " 个设备，暂无法读取电量",
+                    "--%");
+
+        } catch (SecurityException ex) {
+            showStatus("请允许蓝牙权限", "--%");
         } catch (Exception ex) {
-            subtitle.setText("当前设备暂不支持读取");
-            value.setText("--%");
+            showStatus("读取蓝牙设备失败", "--%");
         }
     }
 }
